@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 
 function Home() {
   const [isHovered, setIsHovered] = React.useState(false);
@@ -91,7 +92,10 @@ function Home() {
           )}
         </div>
 
-        <button className="mt-12 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white px-8 py-3 rounded-lg hover:shadow-xl transition-all duration-500 transform hover:scale-105 hover:rotate-1 flex items-center">
+        <Link
+          to="/tts"
+          className="mt-12 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white px-8 py-3 rounded-lg hover:shadow-xl transition-all duration-500 transform hover:scale-105 hover:rotate-1 flex items-center"
+        >
           <svg
             className="w-5 h-5 mr-2 animate-pulse"
             fill="none"
@@ -112,7 +116,7 @@ function Home() {
             />
           </svg>
           Get Started
-        </button>
+        </Link>
 
         <div className="mt-12 mb-8 text-center">
           <p className="text-gray-600 hover:text-gray-800 transition-all duration-300">

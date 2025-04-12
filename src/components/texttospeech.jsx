@@ -48,10 +48,10 @@ function TextToSpeech() {
       voices: ["Conchita", "Lucia", "Enrique"]
     },
     "es-MX": { name: "Spanish, Mexican", voices: ["Mia"] },
-    "es-US": { name: "Spanish, US", voices: ["Penélope", "Miguel", "Lupe"] },
+    "es-US": { name: "Spanish, US", voices: ["Penelope", "Miguel", "Lupe"] },
     "fr-CA": { name: "French, Canadian", voices: ["Chantal"] },
-    "fr-FR": { name: "French", voices: ["Léa", "Céline", "Mathieu"] },
-    "is-IS": { name: "Icelandic", voices: ["Dóra", "Karl"] },
+    "fr-FR": { name: "French", voices: ["Lea", "Celine", "Mathieu"] },
+    "is-IS": { name: "Icelandic", voices: ["Dora", "Karl"] },
     "it-IT": { name: "Italian", voices: ["Giorgio", "Carla", "Bianca"] },
     "ja-JP": { name: "Japanese", voices: ["Takumi", "Mizuki"] },
     "hi-IN": { name: "Hindi", voices: ["Aditi"] },
@@ -61,9 +61,9 @@ function TextToSpeech() {
     "pl-PL": { name: "Polish", voices: ["Ewa", "Jacek", "Maja", "Jan"] },
     "pt-BR": {
       name: "Portuguese, Brazilian",
-      voices: ["Vitória", "Camila", "Ricardo"]
+      voices: ["Vitoria", "Camila", "Ricardo"]
     },
-    "pt-PT": { name: "Portuguese", voices: ["Inês", "Cristiano"] },
+    "pt-PT": { name: "Portuguese", voices: ["Ines", "Cristiano"] },
     "ro-RO": { name: "Romanian", voices: ["Carmen"] },
     "ru-RU": { name: "Russian", voices: ["Maxim", "Tatyana"] },
     "sv-SE": { name: "Swedish", voices: ["Astrid"] },
@@ -110,7 +110,10 @@ function TextToSpeech() {
         });
 
         const response = await polly.send(command);
-        const blob = new Blob([response.AudioStream], { type: "audio/mpeg" });
+        console.log(response);
+        console.log(typeof response.AudioStream);
+        const byteArray = await response.AudioStream.transformToByteArray();
+        const blob = new Blob([byteArray], { type: "audio/mpeg" });
         console.log("Blob", blob)
 
         if (audioUrlRef.current) {
