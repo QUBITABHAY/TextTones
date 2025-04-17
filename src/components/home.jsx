@@ -7,7 +7,7 @@ function Home() {
     "Neural text-to-speech technology",
     "Lifelike speech conversion",
     "Personal audio library",
-    "60+ voices in 30+ languages"
+    "40+ voices in 20+ languages"
   ];
   const benefits = [
     "SSML support",

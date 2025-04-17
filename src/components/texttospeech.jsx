@@ -15,10 +15,11 @@ function TextToSpeech() {
   const [text, setText] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState("en-US");
+  const [selectedLanguage, setSelectedLanguage] = useState("en-IN");
   const [selectedVoice, setSelectedVoice] = useState("");
   const [isLanguageOpen, setIsLanguageOpen] = useState(false);
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
+  const [isDownloaded, setDownloaded] = useState(false);
 
   const languages = {
     arb: { name: "Arabic", voices: ["Zeina"] },
@@ -113,6 +114,7 @@ function TextToSpeech() {
         console.log(response);
         console.log(typeof response.AudioStream);
         const byteArray = await response.AudioStream.transformToByteArray();
+        console.log("Byte Array", byteArray);
         const blob = new Blob([byteArray], { type: "audio/mpeg" });
         console.log("Blob", blob)
 
@@ -142,6 +144,7 @@ function TextToSpeech() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        setDownloaded(true);
       }
     },
     [audioUrl, selectedLanguage, selectedVoice]
