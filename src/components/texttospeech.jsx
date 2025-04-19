@@ -1,6 +1,9 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
+import { useAuth } from "../context/AuthContext";
+import { doc, updateDoc, increment, getDoc, setDoc } from "firebase/firestore";
+import { db } from "../config/db";
 import AudioPlayer from "./AudioPlayer";
 
 const polly = new PollyClient({
@@ -9,19 +12,22 @@ const polly = new PollyClient({
       accessKeyId: import.meta.env.VITE_AWS_ACESS_KEY,
       secretAccessKey: import.meta.env.VITE_AWS_SECRET_KEY
     }
-})
+});
 
 function TextToSpeech() {
   const [text, setText] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("en-IN");
-  const [selectedVoice, setSelectedVoice] = useState("");
+  const [selectedVoice, setSelectedVoice] = useState("Aditi");
   const [isLanguageOpen, setIsLanguageOpen] = useState(false);
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
-  const [isDownloaded, setDownloaded] = useState(false);
+  const [error, setError] = useState("");
+  const [dbError, setDbError] = useState(null);
 
-  const languages = {
+  const { user } = useAuth();
+
+  const languages = useMemo(() => ({
     arb: { name: "Arabic", voices: ["Zeina"] },
     "cmn-CN": { name: "Chinese, Mandarin", voices: ["Zhiyu"] },
     "cy-GB": { name: "Welsh", voices: ["Gwyneth"] },
@@ -69,7 +75,7 @@ function TextToSpeech() {
     "ru-RU": { name: "Russian", voices: ["Maxim", "Tatyana"] },
     "sv-SE": { name: "Swedish", voices: ["Astrid"] },
     "tr-TR": { name: "Turkish", voices: ["Filiz"] }
-  };
+  }), []);
 
   const audioUrlRef = useRef(null);
 
@@ -85,7 +91,7 @@ function TextToSpeech() {
     setSelectedLanguage(code);
     setSelectedVoice(languages[code].voices[0]);
     setIsLanguageOpen(false);
-  }, []);
+  }, [languages]);
 
   const handleVoiceChange = useCallback(voice => {
     setSelectedVoice(voice);
@@ -96,10 +102,71 @@ function TextToSpeech() {
     setText(e.target.value);
   }, []);
 
+  const estimateAudioDuration = (text) => {
+    const words = text.trim().split(/\s+/).length;
+    return Math.ceil(words / 150);
+  };
+
+  const updateUserActivity = useCallback(async (text, duration, audioUrl) => {
+    if (!user) {
+      console.error('No user found when trying to update activity');
+      return;
+    }
+
+    const userRef = doc(db, 'users', user.uid);
+    try {
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        console.log('Creating new user document');
+        await setDoc(userRef, {
+          email: user.email,
+          displayName: user.displayName || user.email.split('@')[0],
+          photoURL: user.photoURL || null,
+          createdAt: new Date().toISOString(),
+          totalConversions: 0,
+          totalCharacters: 0,
+          totalAudioDuration: 0,
+          recentActivity: []
+        });
+      }
+      const currentData = userSnap.exists() ? userSnap.data() : { recentActivity: [] };
+      const newActivity = {
+        text,
+        timestamp: new Date().toISOString(),
+        duration,
+        voice: selectedVoice,
+        language: selectedLanguage,
+        audioUrl
+      };
+      const updatedActivity = [newActivity, ...(currentData.recentActivity || [])].slice(0, 10);
+
+      const updateData = {
+        totalConversions: increment(1),
+        totalCharacters: increment(text.length),
+        totalAudioDuration: increment(duration),
+        recentActivity: updatedActivity
+      };
+
+      await updateDoc(userRef, updateData);
+      console.log('Successfully updated user activity');
+      setDbError(null);
+    } catch (error) {
+      console.error('Error updating user activity:', error);
+      console.error('Error details:', {
+        userId: user.uid,
+        errorCode: error.code,
+        errorMessage: error.message
+      });
+      setDbError('Failed to save your activity. Please try again later.');
+      throw error;
+    }
+  }, [user, selectedVoice, selectedLanguage]);
+
   const handleConvert = useCallback(
     async () => {
       if (!text || !selectedVoice) return;
       setIsLoading(true);
+      setError("");
 
       try {
         const command = new SynthesizeSpeechCommand({
@@ -111,28 +178,28 @@ function TextToSpeech() {
         });
 
         const response = await polly.send(command);
-        console.log(response);
-        console.log(typeof response.AudioStream);
         const byteArray = await response.AudioStream.transformToByteArray();
-        console.log("Byte Array", byteArray);
         const blob = new Blob([byteArray], { type: "audio/mpeg" });
-        console.log("Blob", blob)
 
         if (audioUrlRef.current) {
           URL.revokeObjectURL(audioUrlRef.current);
         }
 
         const url = URL.createObjectURL(blob);
-        console.log("Audio URL", url)
         audioUrlRef.current = url;
         setAudioUrl(url);
+
+        const estimatedDuration = estimateAudioDuration(text);
+        await updateUserActivity(text, estimatedDuration, url);
       } catch (error) {
-        console.error("Error converting text:", error);
+        console.error("Error:", error);
+        setError(error.message || "An error occurred during conversion or saving data");
+        return;
       } finally {
         setIsLoading(false);
       }
     },
-    [text, selectedVoice, selectedLanguage]
+    [text, selectedVoice, selectedLanguage, updateUserActivity]
   );
 
   const handleDownload = useCallback(
@@ -144,16 +211,20 @@ function TextToSpeech() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        setDownloaded(true);
       }
     },
     [audioUrl, selectedLanguage, selectedVoice]
   );
 
-
   return (
     <div className="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 min-h-screen flex items-center justify-center p-6">
       <div className="rounded-3xl p-10 w-full max-w-3xl">
+        {dbError && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-600">{dbError}</p>
+          </div>
+        )}
+
         <h1 className="text-4xl font-bold text-center mb-10 bg-gradient-to-r from-blue-500 to-indigo-500 bg-clip-text text-transparent">
           Text to Speech Converter
         </h1>
@@ -284,6 +355,7 @@ function TextToSpeech() {
             <div className="w-full flex justify-center">
               <AudioPlayer src={audioUrl} />
             </div>}
+          {error && <div className="text-red-500 text-center mt-4">{error}</div>}
         </div>
       </div>
     </div>

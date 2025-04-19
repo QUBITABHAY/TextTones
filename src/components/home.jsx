@@ -2,7 +2,6 @@ import React from "react";
 import { Link } from "react-router-dom";
 
 function Home() {
-  const [isHovered, setIsHovered] = React.useState(false);
   const features = [
     "Neural text-to-speech technology",
     "Lifelike speech conversion",
@@ -19,20 +18,7 @@ function Home() {
   return (
     <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 min-h-screen flex items-center justify-center px-4 animate-gradient-x">
       <div className="flex flex-col items-center max-w-5xl mx-auto pt-8">
-        <div
-          className="flex items-center mb-8 transform hover:scale-110 transition-all duration-500 cursor-pointer"
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-        >
-          <svg
-            className={`w-12 h-12 text-blue-600 mr-4 ${isHovered
-              ? "animate-bounce"
-              : "animate-pulse"}`}
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
-            <path d="M18 3a1 1 0 00-1.447-.894L8.763 6H5a3 3 0 000 6h.28l1.771 5.316A1 1 0 008 18h1a1 1 0 001-1v-4.382l6.553 3.276A1 1 0 0018 15V3z" />
-          </svg>
+        <div className="flex items-center mb-8 transform hover:scale-110 transition-all duration-500 cursor-pointer">
           <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent animate-text">
             Welcome to TextTones
           </h1>
