@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { logoutUser } from "../models/auth";
@@ -17,7 +17,31 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const convertBase64ToAudio = (base64String) => {
+    if (!base64String) return null;
+    const byteCharacters = atob(base64String);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'audio/mp3' });
+    return URL.createObjectURL(blob);
+  };
+
+  // Move cleanup function outside useEffect
+  const cleanupAudioUrls = useCallback((activities) => {
+    activities?.forEach(activity => {
+      if (activity.audioUrl && activity.audioUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(activity.audioUrl);
+      }
+    });
+  }, []);
+
   useEffect(() => {
+    let mounted = true;
+    let currentUrls = [];
+    
     const fetchUserData = async () => {
       if (!user) {
         navigate('/login');
@@ -25,32 +49,56 @@ function Dashboard() {
       }
 
       try {
-        console.log('Fetching data for user:', user.uid);
         const userRef = doc(db, 'users', user.uid);
         const userSnap = await getDoc(userRef);
         
+        if (!mounted) return;
+        
         if (userSnap.exists()) {
-          console.log('User data found:', userSnap.data());
           const data = userSnap.data();
+          
+          // Clean up previous URLs before creating new ones
+          cleanupAudioUrls(currentUrls);
+          
+          // Process recent activity to convert base64 to audio URLs
+          const processedActivity = (data.recentActivity || []).map(activity => {
+            const audioUrl = activity.audioBase64 ? convertBase64ToAudio(activity.audioBase64) : activity.audioUrl;
+            if (audioUrl) {
+              currentUrls.push(audioUrl);
+            }
+            return {
+              ...activity,
+              audioUrl
+            };
+          });
+
           setUserData({
             totalConversions: data.totalConversions || 0,
             totalCharacters: data.totalCharacters || 0,
-            recentActivity: data.recentActivity || []
+            recentActivity: processedActivity
           });
         } else {
-          console.log('No user data found, using defaults');
           setError('No user data found. Try converting some text to see your stats!');
         }
       } catch (error) {
-        console.error('Error fetching user data:', error);
-        setError('Error loading your data. Please try again later.');
+        if (mounted) {
+          console.error('Error fetching user data:', error);
+          setError('Error loading your data. Please try again later.');
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchUserData();
-  }, [user, navigate]);
+
+    return () => {
+      mounted = false;
+      cleanupAudioUrls(currentUrls);
+    };
+  }, [user, navigate, cleanupAudioUrls]);
 
   const handleLogout = async () => {
     try {

@@ -1,10 +1,63 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
 import { useAuth } from "../context/AuthContext";
 import { doc, updateDoc, increment, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../config/db";
 import AudioPlayer from "./AudioPlayer";
+
+// Create memoized dropdown component
+const DropdownButton = memo(({ label, value, options, isOpen, onToggle, onChange }) => (
+  <div className="relative">
+    <label className="block text-gray-700 font-medium mb-2">
+      {label}
+    </label>
+    <div
+      className="relative"
+      onBlur={() => setTimeout(() => onToggle(false), 200)}
+    >
+      <button
+        onClick={() => onToggle(!isOpen)}
+        className="w-full px-4 py-2.5 text-left bg-white border border-gray-300 rounded-lg shadow-sm hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+      >
+        <span className="block truncate">{value}</span>
+        <span className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+          <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+        </span>
+      </button>
+      {isOpen && (
+        <div className="absolute z-10 w-full mt-1 bg-white shadow-lg max-h-60 rounded-lg py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
+          {options.map(option => (
+            <button
+              key={option.value}
+              className={`${option.value === value
+                ? "text-blue-600 bg-blue-50"
+                : "text-gray-900 hover:bg-gray-100"} cursor-pointer select-none relative py-2 pl-3 pr-9 w-full text-left`}
+              onClick={() => onChange(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+));
+
+// Memoize the AudioPlayer component
+const MemoizedAudioPlayer = memo(AudioPlayer);
+
+const blobToBase64 = (blob) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result.split(',')[1];
+      resolve(base64String);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
 
 const polly = new PollyClient({
     region: import.meta.env.VITE_AWS_REGION,
@@ -77,6 +130,20 @@ function TextToSpeech() {
     "tr-TR": { name: "Turkish", voices: ["Filiz"] }
   }), []);
 
+  const languageOptions = useMemo(() => 
+    Object.entries(languages).map(([code, { name }]) => ({
+      value: code,
+      label: name
+    })).filter(({ value }) => languages[value].voices.length > 0)
+  , [languages]);
+
+  const voiceOptions = useMemo(() => 
+    languages[selectedLanguage].voices.map(voice => ({
+      value: voice,
+      label: voice
+    }))
+  , [selectedLanguage, languages]);
+
   const audioUrlRef = useRef(null);
 
   useEffect(() => {
@@ -107,7 +174,7 @@ function TextToSpeech() {
     return Math.ceil(words / 150);
   };
 
-  const updateUserActivity = useCallback(async (text, duration, audioUrl) => {
+  const updateUserActivity = useCallback(async (text, duration, audioBase64) => {
     if (!user) {
       console.error('No user found when trying to update activity');
       return;
@@ -117,7 +184,6 @@ function TextToSpeech() {
     try {
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) {
-        console.log('Creating new user document');
         await setDoc(userRef, {
           email: user.email,
           displayName: user.displayName || user.email.split('@')[0],
@@ -136,7 +202,7 @@ function TextToSpeech() {
         duration,
         voice: selectedVoice,
         language: selectedLanguage,
-        audioUrl
+        audioBase64
       };
       const updatedActivity = [newActivity, ...(currentData.recentActivity || [])].slice(0, 10);
 
@@ -148,15 +214,9 @@ function TextToSpeech() {
       };
 
       await updateDoc(userRef, updateData);
-      console.log('Successfully updated user activity');
       setDbError(null);
     } catch (error) {
       console.error('Error updating user activity:', error);
-      console.error('Error details:', {
-        userId: user.uid,
-        errorCode: error.code,
-        errorMessage: error.message
-      });
       setDbError('Failed to save your activity. Please try again later.');
       throw error;
     }
@@ -180,17 +240,20 @@ function TextToSpeech() {
         const response = await polly.send(command);
         const byteArray = await response.AudioStream.transformToByteArray();
         const blob = new Blob([byteArray], { type: "audio/mpeg" });
+        
+        // Convert blob to base64
+        const audioBase64 = await blobToBase64(blob);
 
+        // Create temporary URL for audio player
         if (audioUrlRef.current) {
           URL.revokeObjectURL(audioUrlRef.current);
         }
-
         const url = URL.createObjectURL(blob);
         audioUrlRef.current = url;
         setAudioUrl(url);
 
         const estimatedDuration = estimateAudioDuration(text);
-        await updateUserActivity(text, estimatedDuration, url);
+        await updateUserActivity(text, estimatedDuration, audioBase64);
       } catch (error) {
         console.error("Error:", error);
         setError(error.message || "An error occurred during conversion or saving data");
@@ -203,17 +266,39 @@ function TextToSpeech() {
   );
 
   const handleDownload = useCallback(
-    () => {
-      if (audioUrl) {
+    async () => {
+      if (!user) return;
+      try {
+        const userRef = doc(db, 'users', user.uid);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) return;
+        
+        const recentActivity = userSnap.data().recentActivity[0];
+        if (!recentActivity?.audioBase64) return;
+
+        // Convert base64 back to blob
+        const byteCharacters = atob(recentActivity.audioBase64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: "audio/mpeg" });
+
+        const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
-        link.href = audioUrl;
+        link.href = url;
         link.download = `${selectedLanguage}-${selectedVoice}-${Date.now()}.mp3`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error("Error downloading audio:", error);
+        setError("Failed to download audio file");
       }
     },
-    [audioUrl, selectedLanguage, selectedVoice]
+    [user, selectedLanguage, selectedVoice]
   );
 
   return (
@@ -230,78 +315,22 @@ function TextToSpeech() {
         </h1>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="relative">
-            <label className="block text-gray-700 font-medium mb-2">
-              Language
-            </label>
-            <div
-              className="relative"
-              onBlur={() => setTimeout(() => setIsLanguageOpen(false), 200)}
-            >
-              <button
-                onClick={() => setIsLanguageOpen(!isLanguageOpen)}
-                className="w-full px-4 py-2.5 text-left bg-white border border-gray-300 rounded-lg shadow-sm hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-              >
-                <span className="block truncate">
-                  {languages[selectedLanguage].name}
-                </span>
-                <span className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-                  <ChevronDownIcon className="w-5 h-5 text-gray-400" />
-                </span>
-              </button>
-              {isLanguageOpen &&
-                <div className="absolute z-10 w-full mt-1 bg-white shadow-lg max-h-60 rounded-lg py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
-                  {Object.entries(languages)
-                    .filter(([, { voices }]) => voices.length > 0)
-                    .map(([code, { name }]) =>
-                      <button
-                        key={code}
-                        className={`${code === selectedLanguage
-                          ? "text-blue-600 bg-blue-50"
-                          : "text-gray-900 hover:bg-gray-100"} cursor-pointer select-none relative py-2 pl-3 pr-9 w-full text-left`}
-                        onClick={() => handleLanguageChange(code)}
-                      >
-                        {name}
-                      </button>
-                    )}
-                </div>}
-            </div>
-          </div>
-          <div className="relative">
-            <label className="block text-gray-700 font-medium mb-2">
-              Voice
-            </label>
-            <div
-              className="relative"
-              onBlur={() => setTimeout(() => setIsVoiceOpen(false), 200)}
-            >
-              <button
-                onClick={() => setIsVoiceOpen(!isVoiceOpen)}
-                className="w-full px-4 py-2.5 text-left bg-white border border-gray-300 rounded-lg shadow-sm hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-              >
-                <span className="block truncate">
-                  {selectedVoice || languages[selectedLanguage].voices[0]}
-                </span>
-                <span className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-                  <ChevronDownIcon className="w-5 h-5 text-gray-400" />
-                </span>
-              </button>
-              {isVoiceOpen &&
-                <div className="absolute z-10 w-full mt-1 bg-white shadow-lg max-h-60 rounded-lg py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
-                  {languages[selectedLanguage].voices.map(voice =>
-                    <button
-                      key={voice}
-                      className={`${voice === selectedVoice
-                        ? "text-blue-600 bg-blue-50"
-                        : "text-gray-900 hover:bg-gray-100"} cursor-pointer select-none relative py-2 pl-3 pr-9 w-full text-left`}
-                      onClick={() => handleVoiceChange(voice)}
-                    >
-                      {voice}
-                    </button>
-                  )}
-                </div>}
-            </div>
-          </div>
+          <DropdownButton
+            label="Language"
+            value={languages[selectedLanguage].name}
+            options={languageOptions}
+            isOpen={isLanguageOpen}
+            onToggle={setIsLanguageOpen}
+            onChange={handleLanguageChange}
+          />
+          <DropdownButton
+            label="Voice"
+            value={selectedVoice}
+            options={voiceOptions}
+            isOpen={isVoiceOpen}
+            onToggle={setIsVoiceOpen}
+            onChange={handleVoiceChange}
+          />
         </div>
         <textarea
           value={text}
@@ -353,7 +382,7 @@ function TextToSpeech() {
 
           {audioUrl &&
             <div className="w-full flex justify-center">
-              <AudioPlayer src={audioUrl} />
+              <MemoizedAudioPlayer src={audioUrl} />
             </div>}
           {error && <div className="text-red-500 text-center mt-4">{error}</div>}
         </div>
