@@ -6,7 +6,7 @@ import { doc, updateDoc, increment, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../config/db";
 import AudioPlayer from "./AudioPlayer";
 
-// Create memoized dropdown component
+
 const DropdownButton = memo(({ label, value, options, isOpen, onToggle, onChange }) => (
   <div className="relative">
     <label className="block text-gray-700 font-medium mb-2">
@@ -44,7 +44,7 @@ const DropdownButton = memo(({ label, value, options, isOpen, onToggle, onChange
   </div>
 ));
 
-// Memoize the AudioPlayer component
+
 const MemoizedAudioPlayer = memo(AudioPlayer);
 
 const blobToBase64 = (blob) => {
