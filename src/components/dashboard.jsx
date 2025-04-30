@@ -100,16 +100,6 @@ function Dashboard() {
     };
   }, [user, navigate, cleanupAudioUrls]);
 
-  const handleLogout = async () => {
-    try {
-      await logoutUser();
-      navigate('/login');
-    } catch (error) {
-      console.error('Error logging out:', error);
-      setError('Failed to log out. Please try again.');
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
@@ -131,12 +121,6 @@ function Dashboard() {
               <p className="mt-2 text-sm text-red-600">{error}</p>
             )}
           </div>
-          <button
-            onClick={handleLogout}
-            className="bg-white px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          >
-            Sign Out
-          </button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
