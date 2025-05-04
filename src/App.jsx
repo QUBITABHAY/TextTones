@@ -12,6 +12,7 @@ import TextToSpeech from "./components/texttospeech";
 import AuthForm from "./components/AuthForm";
 import Navigation from "./components/Navigation";
 import "./App.css";
+import { Analytics } from "@vercel/analytics/react";
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -37,6 +38,7 @@ function App() {
     <AuthProvider>
       <Router>
         <div className="min-h-screen bg-gray-50">
+          <Analytics />
           <Navigation />
           <main>
             <Routes>
