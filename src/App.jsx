@@ -13,6 +13,7 @@ import AuthForm from "./components/AuthForm";
 import Navigation from "./components/Navigation";
 import "./App.css";
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -38,6 +39,7 @@ function App() {
     <AuthProvider>
       <Router>
         <div className="min-h-screen bg-gray-50">
+          <SpeedInsights />
           <Analytics />
           <Navigation />
           <main>

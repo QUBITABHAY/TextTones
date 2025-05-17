@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { logoutUser } from "../models/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../config/db";
 import AudioPlayer from "./AudioPlayer";
